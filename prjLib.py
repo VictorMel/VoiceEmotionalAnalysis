@@ -68,6 +68,7 @@ def Numpy2Pandas(data):
 def ZoomIn(signals,time):
     for ii in range(len(signals)):
         plt.plot(signals[ii][time[0]:time[1]])
+
 def PlotCorrMap(data,labels):
     hm_data = np.concatenate((labels.reshape(labels.shape[0],1), data), axis=1)
     columns_names = ['T']
