@@ -69,7 +69,25 @@ def ZoomIn(signals,time):
     for ii in range(len(signals)):
         plt.plot(signals[ii][time[0]:time[1]])
 
-def PlotCorrMap(data,labels):
+def PlotCorrMap(data): # ,labels
+    dF = Numpy2Pandas(data)
+    f = plt.figure(figsize=(19, 15))
+    corr_mat = dF.corr().abs()
+    plt.matshow(corr_mat, fignum=f.number)
+    plt.xticks(range(dF.select_dtypes(['number']).shape[1]), dF.select_dtypes(['number']).columns, fontsize=14, rotation=45)
+    plt.yticks(range(dF.select_dtypes(['number']).shape[1]), dF.select_dtypes(['number']).columns, fontsize=14)
+    cb = plt.colorbar()
+    cb.ax.tick_params(labelsize=14)
+    plt.title('Correlation Matrix Heat Map', fontsize=16)
+    return corr_mat
+
+    '''
+    dF = Numpy2Pandas(data)
+    fig = px.imshow(dF.corr())
+    fig.show()
+    '''
+
+    '''
     hm_data = np.concatenate((labels.reshape(labels.shape[0],1), data), axis=1)
     columns_names = ['T']
     for ii in range(data.shape[1]):
@@ -81,6 +99,18 @@ def PlotCorrMap(data,labels):
     #sns.heatmap(hm_data_df.corr(), annot = True)
     plt.bar([x+1 for x in range(len(corr))], corr)
     plt.show()
+    '''
+
+def GetFeaturesCorr(corr_mat):
+    x_corr = corr_mat.mean(axis=0).to_numpy()
+    y_corr = corr_mat.mean(axis=1).to_numpy()
+    corr_vec = (x_corr+y_corr)/2
+    corr_vec = Numpy2Pandas(corr_vec.reshape(corr_vec.shape[0],1).T)
+    return corr_vec
+
+def ExtractCorrFeatures(corr_vec,corr_thr):
+    extracted_features = corr_vec.loc[:, (corr_vec > corr_thr).any()]
+    return list(extracted_features.columns)
 
 def PlotLabelsHistogram(vY: np.ndarray, hA: Optional[plt.Axes] = None ) -> plt.Axes:
     if hA is None:
@@ -92,6 +122,14 @@ def PlotLabelsHistogram(vY: np.ndarray, hA: Optional[plt.Axes] = None ) -> plt.A
     hA.set_xticks(vLabels, [f'{labelVal}' for labelVal in vLabels])
     hA.set_ylabel('Count')
     return hA
+
+def PlotSplitedDataHistogram(train_labels, test_labels):
+    plt.figure(figsize=(14, 6))
+    ax = plt.subplot(4,1,1)
+    PlotLabelsHistogram(train_labels,ax)
+    ax = plt.subplot(4,1,2)
+    PlotLabelsHistogram(test_labels,ax)
+    plt.show()
 
 def PlotConfusionMatrix(vY: np.ndarray, vYPred: np.ndarray, normMethod: str = None, hA: Optional[plt.Axes] = None, 
                         lLabels: Optional[List] = None, dScore: Optional[Dict] = None, titleStr: str = 'Confusion Matrix', 
@@ -122,17 +160,6 @@ def FeaturesImportance(model,data):
     plt.xlabel('Feature Name')
     fig.show()
     return vFeatImportance
-
-def PlotSplitData(dataset,target, *,trainRatio=0.9, plot=True):
-    train_data, test_data, train_labels, test_labels = train_test_split(dataset, target, train_size = trainRatio, random_state = 512)
-    if plot:
-        plt.figure(figsize=(14, 6))
-        ax = plt.subplot(4,1,1)
-        PlotLabelsHistogram(train_labels,ax)
-        ax = plt.subplot(4,1,2)
-        PlotLabelsHistogram(test_labels,ax)
-        plt.show()
-    return [train_data,train_labels,test_data,test_labels]
 
 def TestClassificationModel(train_data,train_labels,test_data,test_labels,classifier, *,paramC=0.0001,kernelType='linear',n_neighbors=3,metricChoice='l2',n_estimators=100,min_samples_split=6,random_state=1, plot=True):
     if classifier == 1: # SVM
