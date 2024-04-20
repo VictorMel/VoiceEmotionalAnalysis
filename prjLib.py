@@ -70,15 +70,15 @@ def ZoomIn(signals,time):
         plt.plot(signals[ii][time[0]:time[1]])
 
 def PlotCorrMap(data): # ,labels
-    dF = Numpy2Pandas(data)
-    f = plt.figure(figsize=(19, 15))
-    corr_mat = dF.corr().abs()
+    f = plt.figure(figsize=(10, 8))
+    corr_mat = data.corr().abs()
     plt.matshow(corr_mat, fignum=f.number)
-    plt.xticks(range(dF.select_dtypes(['number']).shape[1]), dF.select_dtypes(['number']).columns, fontsize=14, rotation=45)
-    plt.yticks(range(dF.select_dtypes(['number']).shape[1]), dF.select_dtypes(['number']).columns, fontsize=14)
+    plt.xticks(range(data.select_dtypes(['number']).shape[1]), data.select_dtypes(['number']).columns, fontsize=14, rotation=45)
+    plt.yticks(range(data.select_dtypes(['number']).shape[1]), data.select_dtypes(['number']).columns, fontsize=14)
     cb = plt.colorbar()
     cb.ax.tick_params(labelsize=14)
     plt.title('Correlation Matrix Heat Map', fontsize=16)
+    plt.grid(None)
     return corr_mat
 
     '''
