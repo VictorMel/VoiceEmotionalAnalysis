@@ -1,13 +1,15 @@
 from typing import List, Tuple, Dict, Optional
 import numpy as np
 import pandas as pd
+import torch
 import matplotlib.pyplot as plt
 import plotly.express as px
 import seaborn as sns
 from math import floor
+from itertools import cycle
 from IPython.display import Audio
 import librosa
-from sklearn.linear_model import LogisticRegression
+from sklearn.linear_model import LogisticRegression, enet_path, lasso_path
 from sklearn.svm import SVC
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.tree import DecisionTreeClassifier
@@ -36,6 +38,10 @@ EDGE_COLOR      = 'k'
 MARKER_SIZE_DEF = 10
 LINE_WIDTH_DEF  = 2
 
+GPU = torch.device('cuda')
+CPU = torch.device('cpu')
+DEVICE = GPU
+
 
 
 # Functions
@@ -54,8 +60,11 @@ def SortDataDescent(data,column_ind):
 
 def FixSamples(sample,sr,max_seconds):
     leng = sr * 2 * max_seconds
-    fix_sample = np.zeros([leng,1])
-    fix_sample[leng-len(sample):] = sample.reshape(sample.shape[0],1)
+    if len(sample) > leng:
+        fix_sample = sample[len(sample)-leng:].reshape(leng,1)
+    else:
+        fix_sample = np.zeros([leng,1])
+        fix_sample[leng-len(sample):] = sample.reshape(sample.shape[0],1)
     return fix_sample[:,0]
 
 def Numpy2Pandas(data):
@@ -112,14 +121,60 @@ def ExtractCorrFeatures(corr_vec,corr_thr):
     extracted_features = corr_vec.loc[:, (corr_vec > corr_thr).any()]
     return list(extracted_features.columns)
 
-def PlotLabelsHistogram(vY: np.ndarray, hA: Optional[plt.Axes] = None ) -> plt.Axes:
+def PlotSplitedDataHistogram_Netanel(y_train,y_test):
+    # Count occurrences of each emotion label in y_train and y_test
+    train_labels, train_counts = np.unique(y_train, return_counts=True)
+    test_labels, test_counts = np.unique(y_test, return_counts=True)
+    # Get unique emotion labels
+    emotions = np.unique(np.concatenate((y_train, y_test)))
+    # Create empty arrays to hold counts
+    train_emotion_counts = np.zeros(len(emotions), dtype=int)
+    test_emotion_counts = np.zeros(len(emotions), dtype=int)
+    # Update counts for train set
+    for i, label in enumerate(train_labels):
+        index = np.where(emotions == label)[0][0]
+        train_emotion_counts[index] = train_counts[i]
+    # Update counts for test set
+    for i, label in enumerate(test_labels):
+        index = np.where(emotions == label)[0][0]
+        test_emotion_counts[index] = test_counts[i]
+    # Plotting
+    fig, ax = plt.subplots(figsize=(10, 6))
+    # Set width of bars
+    bar_width = 0.35
+    # Set position of bar on X axis
+    r1 = np.arange(len(emotions))
+    r2 = [x + bar_width for x in r1]
+    # Make the plot
+    train_bars = plt.bar(r1, train_emotion_counts, color='blue', width=bar_width, edgecolor='grey', label='Train')
+    test_bars = plt.bar(r2, test_emotion_counts, color='orange', width=bar_width, edgecolor='grey', label='Test')
+    # Add value labels on top of each bar
+    for bar in train_bars + test_bars:
+        height = bar.get_height()
+        plt.text(bar.get_x() + bar.get_width() / 2, height, height, ha='center', va='bottom')
+    # Add xticks on the middle of the group bars
+    plt.xlabel('Emotions', fontweight='bold')
+    plt.xticks([r + bar_width/2 for r in range(len(emotions))], emotions)
+    plt.ylabel('Count', fontweight='bold')
+    plt.title('Count of Emotions in Train and Test Sets', fontweight='bold')
+    # Create legend & Show graphic
+    plt.legend()
+    plt.tight_layout()
+    plt.show()
+
+def addlabels(x,y):
+    for i in range(len(x)):
+        plt.text(i,y[i],y[i])
+
+def PlotLabelsHistogram(vY: np.ndarray, labels_list, hA: Optional[plt.Axes] = None ) -> plt.Axes:
     if hA is None:
         hF, hA = plt.subplots(figsize = (8, 6))
     vLabels, vCounts = np.unique(vY, return_counts = True)
     hA.bar(vLabels, vCounts, width = 0.9, align = 'center')
+    addlabels(vLabels, vCounts)
     hA.set_title('Histogram of Classes / Labels')
     hA.set_xlabel('Class')
-    hA.set_xticks(vLabels, [f'{labelVal}' for labelVal in vLabels])
+    hA.set_xticks(vLabels, labels_list)
     hA.set_ylabel('Count')
     return hA
 
@@ -131,7 +186,7 @@ def PlotSplitedDataHistogram(train_labels, test_labels):
     PlotLabelsHistogram(test_labels,ax)
     plt.show()
 
-def PlotConfusionMatrix(vY: np.ndarray, vYPred: np.ndarray, normMethod: str = None, hA: Optional[plt.Axes] = None, 
+def PlotConfusionMatrix(vY: np.ndarray, vYPred: np.ndarray, normMethod: str = 'true', hA: Optional[plt.Axes] = None, 
                         lLabels: Optional[List] = None, dScore: Optional[Dict] = None, titleStr: str = 'Confusion Matrix', 
                         xLabelRot: Optional[int] = None, valFormat: Optional[str] = None) -> Tuple[plt.Axes, np.ndarray]:
     # Calculation of Confusion Matrix
@@ -160,6 +215,33 @@ def FeaturesImportance(model,data):
     plt.xlabel('Feature Name')
     fig.show()
     return vFeatImportance
+
+def PlotLassoElasticNetPaths(X,y,eps):
+    # eps = 5e-3  # the smaller it is the longer is the path
+    if isinstance(X, pd.DataFrame):
+        X = X.to_numpy()
+    if isinstance(y, pd.DataFrame):
+        y = y.to_numpy()
+    y = y[:,0]
+
+    alphas_lasso, coefs_lasso, _ = lasso_path(X, y, eps=eps)
+
+    plt.figure(figsize=(14, 6))
+    colors = cycle(['blue', 'orange', 'green', 'red', 'purple', 'brown', 'pink', 'gray', 'olive', 'cyan'])
+    neg_log_alphas_lasso = -np.log10(alphas_lasso)
+    for coef_l, c in zip(coefs_lasso, colors):
+        l1 = plt.plot(neg_log_alphas_lasso, coef_l, c=c)
+    plt.xlabel("-Log(alpha)")
+    plt.ylabel("coefficients")
+    plt.title("Lasso Path")
+    
+    plt.figure(figsize=(14, 6))
+    pd_coefs_lasso = Numpy2Pandas(coefs_lasso)
+    lasso_max = pd_coefs_lasso.abs().max(axis=1)
+    plt.bar(x = lasso_max.index, height = lasso_max)
+
+    # best_features = lasso_max.sort_values(ascending=False).index
+    return lasso_max
 
 def TestClassificationModel(train_data,train_labels,test_data,test_labels,classifier, *,paramC=0.0001,kernelType='linear',n_neighbors=3,metricChoice='l2',n_estimators=100,min_samples_split=6,random_state=1, plot=True):
     if classifier == 1: # SVM
